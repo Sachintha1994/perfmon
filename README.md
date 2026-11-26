@@ -6,7 +6,12 @@
 
 <p align="center">
   A live performance monitor and benchmark for Windows laptops and PCs —<br>
-  real-time graphs for CPU, memory, disk, network and battery in a clean desktop app.
+  real-time graphs for CPU, memory, disk, network, battery and temperatures in a clean desktop app.
+</p>
+
+<p align="center">
+  <a href="https://github.com/Sachintha1994/perfmon/releases/latest"><b>⬇ Download the latest installer</b></a>
+  &nbsp;·&nbsp; Windows 10/11 64-bit
 </p>
 
 <p align="center">
@@ -18,7 +23,7 @@
 - **Live dashboard (1-second refresh)** — animated ring gauges for CPU, memory, system drive and battery, with a health badge that tells you at a glance whether the machine is running smoothly or under load.
 - **Live graphs (last 3 minutes)** — CPU usage (with average, peak and clock speed), RAM and page file, disk read/write, and network download/upload. Hover any graph for exact values at that moment.
 - **Per-core load** — a fill bar for every logical processor.
-- **Temperatures** — CPU package, every P-/E-core, SSD (with its warning/critical limits) and GPU, with a live chart, peak values, a Thermals page listing every sensor, and Normal / Warm / Hot / Critical status. Requires [LibreHardwareMonitor](#temperature-monitoring).
+- **Temperatures** — CPU package, every P-/E-core, SSD (with its warning/critical limits) and GPU, with a live chart, peak values, a Thermals page listing every sensor, and Normal / Warm / Hot / Critical status. Works out of the box with the installer ([details](#temperature-monitoring)).
 - **Processes** — the top 15 apps by CPU or memory, with usage bars and a name filter.
 - **Storage** — used / free space for every drive.
 - **Benchmark** — a ~20 second test of single-core CPU, multi-core CPU, memory bandwidth and disk read/write speed, producing an overall score. Results are saved so you can track scores over time.
@@ -27,14 +32,18 @@
 
 ## Install
 
-Download `PerfMon-Setup-x.y.z.exe` from the [Releases](../../releases) page (or build it yourself — see below) and run it.
+Download `PerfMon-Setup-x.y.z.exe` from the [latest release](https://github.com/Sachintha1994/perfmon/releases/latest) (or build it yourself — see below) and run it.
 
 - **Everything is included** — the installer also sets up temperature monitoring (LibreHardwareMonitor + the PawnIO sensor driver), so temperatures work straight away with no extra downloads.
 - Asks for administrator rights once (to install the sensor driver and a sign-in task); PerfMon itself runs as a normal app.
 - Optional desktop shortcut and "start when I sign in" option. Temperature monitoring can be unticked during setup.
 - Uninstall from **Settings → Apps** like any other program.
 
-Requires Windows 10/11 (64-bit) with the Microsoft Edge WebView2 runtime, which is preinstalled on Windows 11.
+Requires Windows 10 (1809 or later) or Windows 11, 64-bit, with the Microsoft Edge WebView2 runtime, which is preinstalled on Windows 11.
+
+> **Windows SmartScreen:** the installer isn't code-signed yet, so Windows may show "Windows protected your PC". Click **More info → Run anyway**. Each release lists the installer's SHA-256 so you can verify the download.
+
+> **Upgrading from 1.0 or 1.1:** those versions installed per-user (in `%LOCALAPPDATA%\Programs\PerfMon`), while 1.2+ installs to Program Files. Uninstall the old version from **Settings → Apps** first so you don't end up with two copies. If you had installed LibreHardwareMonitor separately, exit it (tray icon → **Exit**) before installing, as it would occupy the port the bundled copy uses; you can then uninstall it.
 
 ## Temperature monitoring
 
@@ -106,7 +115,8 @@ If Inno Setup isn't installed, step 5 is skipped and the portable app in `dist/P
 ┌──────────────────────────── server.py ────────────────────────────┐
 │ Sampler thread ── psutil every 1 s ──► latest snapshot + 5-min    │
 │   + temps from LibreHardwareMonitor     history buffer            │
-│     (127.0.0.1:8085/data.json)                                    │
+│     (127.0.0.1:8085/data.json, started at sign-in by the          │
+│      \PerfMon\Sensors task, or by PerfMon if it isn't running)    │
 │ HTTP server (127.0.0.1)                                           │
 │   GET  /                       dashboard (static/index.html)      │
 │   GET  /stream                 Server-Sent Events, 1 msg/second   │
@@ -148,9 +158,23 @@ perfmon/
 │   ├── THIRD-PARTY-NOTICES.txt
 │   ├── licenses/          # MPL-2.0 (LibreHardwareMonitor), GPL-2.0 (PawnIO)
 │   └── PerfMon.iss        # Inno Setup installer script
-└── docs/screenshot.png
+└── docs/                  # README screenshots
 ```
+
+`vendor/` (LibreHardwareMonitor and PawnIO downloaded by `build.bat`), `dist/`, `build/` and `installer/` are build output and not committed.
+
+## Changelog
+
+**1.2.0** — The installer now includes everything needed for temperatures: LibreHardwareMonitor, the PawnIO sensor driver and a sign-in task, so temperatures work right after install. Installs to Program Files (admin once). Third-party licenses are installed alongside the app.
+
+**1.1.0** — Temperature monitoring: CPU package / per-core, SSD and GPU temperatures, a new Thermals page, temperature in the health badge. Window opens maximized; 5-minute chart history.
+
+**1.0.0** — First release: live dashboard, CPU / memory / disk / network graphs, per-core load, processes, storage, benchmark with history, dark and light themes, Windows installer.
+
+## License notes
+
+PerfMon's installer bundles [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) (MPL-2.0) and [PawnIO](https://github.com/namazso/PawnIO) (GPL-2.0) unmodified. Their license texts are in [`packaging/licenses/`](packaging/licenses) and [`packaging/THIRD-PARTY-NOTICES.txt`](packaging/THIRD-PARTY-NOTICES.txt), and are installed with the app.
 
 ## Tech stack
 
-Python · [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) (temperatures) · [psutil](https://github.com/giampaolo/psutil) · [pywebview](https://pywebview.flowrl.com/) · HTML/CSS/JavaScript (canvas) · PyInstaller · Inno Setup
+Python · [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) + [PawnIO](https://github.com/namazso/PawnIO) (temperatures) · [psutil](https://github.com/giampaolo/psutil) · [pywebview](https://pywebview.flowrl.com/) · HTML/CSS/JavaScript (canvas) · PyInstaller · Inno Setup
