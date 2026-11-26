@@ -14,6 +14,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import urllib.request
 import threading
 import time
 import webbrowser
@@ -24,15 +25,116 @@ from pathlib import Path
 import psutil
 
 APP_NAME = "PerfMon"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 HOST, PORT = "127.0.0.1", 8765
 INTERVAL = 1.0          # seconds between samples
-HISTORY = 180           # samples kept for the graphs (3 minutes)
+HISTORY = 300           # samples kept for the graphs (5 minutes)
 # When frozen by PyInstaller, bundled files live under sys._MEIPASS.
 BASE = Path(getattr(sys, "_MEIPASS", Path(__file__).parent))
 STATIC = BASE / "static"
 DATA_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home())) / APP_NAME
 BENCH_FILE = DATA_DIR / "benchmarks.json"
+# LibreHardwareMonitor's "Remote Web Server" (Options -> Remote Web Server -> Run)
+LHM_URL = os.environ.get("PERFMON_LHM_URL", "http://127.0.0.1:8085/data.json")
+
+
+# --------------------------------------------------------------------------- #
+# Temperatures (via LibreHardwareMonitor)
+# --------------------------------------------------------------------------- #
+# Windows has no standard non-admin API for CPU temperature, so PerfMon reads
+# the JSON published by LibreHardwareMonitor's local web server.
+_SKIP_TEMP = ("distance to tjmax", "warning temperature", "critical temperature",
+              "thermal sensor limit")
+_KIND_BY_ICON = {"cpu": "cpu", "nvidia": "gpu", "ati": "gpu", "amd": "gpu", "intel": "gpu",
+                 "hdd": "disk", "mainboard": "board", "battery": "battery", "ram": "ram"}
+
+
+def _parse_temp(v):
+    """'65.0 °C' -> 65.0 ; converts °F to °C if LHM is set to Fahrenheit."""
+    try:
+        num = float(v.split()[0].replace(",", "."))
+    except (ValueError, IndexError, AttributeError):
+        return None
+    return round((num - 32) * 5 / 9, 1) if v.rstrip().endswith("F") else num
+
+
+def find_lhm_exe():
+    cands = [shutil.which("LibreHardwareMonitor")]
+    la = Path(os.environ.get("LOCALAPPDATA", ""))
+    cands += [str(p) for p in (la / "Microsoft" / "WinGet" / "Packages").glob(
+        "LibreHardwareMonitor*/LibreHardwareMonitor.exe")]
+    for base in (os.environ.get("ProgramFiles"), os.environ.get("ProgramFiles(x86)"), str(la / "Programs")):
+        if base:
+            cands.append(str(Path(base) / "LibreHardwareMonitor" / "LibreHardwareMonitor.exe"))
+    return next((c for c in cands if c and Path(c).is_file()), None)
+
+
+class Thermals:
+    """Polls LibreHardwareMonitor; falls back to NVIDIA GPU temp if that's all there is."""
+
+    def __init__(self):
+        self._next_try = 0.0
+        self.ok = False
+
+    def _fetch(self):
+        with urllib.request.urlopen(LHM_URL, timeout=0.6) as r:
+            return json.loads(r.read().decode("utf-8", "replace"))
+
+    def read(self, gpu=None):
+        data = None
+        now = time.monotonic()
+        if self.ok or now >= self._next_try:
+            try:
+                data = self._fetch()
+                self.ok = True
+            except Exception:
+                self.ok = False
+                self._next_try = now + 5  # don't stall the sampler while LHM is absent
+        if data is None:
+            res = {"source": "none", "sensors": [], "cpu": None, "gpu": None, "disk": None}
+            if gpu and gpu.get("temp") is not None:
+                res.update(source="nvidia", gpu=gpu["temp"], sensors=[{
+                    "id": "nvidia/0", "hw": gpu["name"], "kind": "gpu", "name": "GPU Core",
+                    "value": gpu["temp"], "max": None}])
+            return res
+
+        sensors, limits = [], {}
+
+        def walk(node, hw=None, kind=None):
+            if node.get("HardwareId"):
+                hw = node.get("Text")
+                icon = (node.get("ImageURL") or "").rsplit("/", 1)[-1].split(".")[0].lower()
+                kind = _KIND_BY_ICON.get(icon, "other")
+            if node.get("Type") == "Temperature":
+                name = node.get("Text") or "?"
+                val = _parse_temp(node.get("Value"))
+                low = name.lower()
+                if any(k in low for k in ("warning temperature", "critical temperature")):
+                    limits.setdefault(hw, {})["warn" if "warning" in low else "crit"] = val
+                elif val is not None and not any(k in low for k in _SKIP_TEMP) and val > 0:
+                    sensors.append({"id": node.get("SensorId"), "hw": hw, "kind": kind,
+                                    "name": name, "value": val,
+                                    "max": _parse_temp(node.get("Max"))})
+            for c in node.get("Children", []):
+                walk(c, hw, kind)
+
+        walk(data)
+        for s in sensors:
+            if s["hw"] in limits:
+                s["limits"] = limits[s["hw"]]
+
+        def pick(kind, *prefer):
+            group = [s for s in sensors if s["kind"] == kind]
+            for want in prefer:
+                for s in group:
+                    if s["name"].lower() == want:
+                        return s["value"]
+            return max((s["value"] for s in group), default=None)
+
+        return {"source": "lhm", "sensors": sensors,
+                "cpu": pick("cpu", "cpu package", "core max", "core average", "cpu cores"),
+                "gpu": pick("gpu", "gpu core", "gpu hot spot"),
+                "disk": pick("disk", "composite temperature", "temperature")}
 
 # --------------------------------------------------------------------------- #
 # Sampler
@@ -49,6 +151,7 @@ class Sampler(threading.Thread):
         self._last_disk = psutil.disk_io_counters()
         self._last_net = psutil.net_io_counters()
         self._last_t = time.monotonic()
+        self.thermals = Thermals()
         psutil.cpu_percent(percpu=True)  # prime
 
     # ---- helpers ---------------------------------------------------------- #
@@ -151,6 +254,7 @@ class Sampler(threading.Thread):
         else:
             for k in ("procs_cpu", "procs_mem", "proc_count", "partitions", "gpu"):
                 snap[k] = self.latest.get(k)
+        snap["temps"] = self.thermals.read(snap.get("gpu"))
         return snap
 
     def run(self):
@@ -354,6 +458,11 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(list(sampler.history))
         elif self.path == "/api/benchmark":
             self._json(Bench.state)
+        elif self.path == "/api/temps/status":
+            running = any((p.info["name"] or "").lower() == "librehardwaremonitor.exe"
+                          for p in psutil.process_iter(["name"]))
+            self._json({"installed": bool(find_lhm_exe()), "running": running,
+                        "connected": sampler.thermals.ok, "url": LHM_URL})
         elif self.path == "/api/benchmark/history":
             self._json(load_bench_history())
         elif self.path == "/stream":
@@ -376,6 +485,15 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(404)
 
     def do_POST(self):
+        if self.path == "/api/temps/start-lhm":
+            exe = find_lhm_exe()
+            if not exe:
+                return self._json({"started": False, "reason": "not_installed"}, 404)
+            try:  # LHM's manifest asks for admin, so Windows shows a UAC prompt
+                os.startfile(exe)
+                return self._json({"started": True})
+            except OSError as e:
+                return self._json({"started": False, "reason": str(e)}, 500)
         if self.path == "/api/benchmark":
             started = Bench.start()
             self._json({"started": started}, 202 if started else 409)
@@ -400,6 +518,8 @@ def main():
     sampler.start()
     srv = make_server()
     url = f"http://{HOST}:{srv.server_address[1]}"
+    if "--page" in sys.argv[:-1]:  # e.g. --page thermals
+        url += "/#" + sys.argv[sys.argv.index("--page") + 1]
     threading.Thread(target=srv.serve_forever, daemon=True).start()
 
     use_browser = "--browser" in sys.argv or os.environ.get("PERFMON_BROWSER") == "1"
@@ -410,14 +530,9 @@ def main():
     if not use_browser:
         try:
             import webview
-            w, h = 1440, 920
-            try:  # fit inside the screen (leave room for the taskbar)
-                sc = webview.screens[0]
-                w, h = min(w, int(sc.width * 0.92)), min(h, int(sc.height * 0.88))
-            except Exception:
-                pass
+            # open maximized: always fits the screen, whatever the display scaling
             webview.create_window(f"{APP_NAME} — Performance Monitor", url,
-                                  width=w, height=h, min_size=(980, 600),
+                                  width=1440, height=900, min_size=(980, 600), maximized=True,
                                   background_color="#0a0e1a")
             webview.start()
             return  # window closed -> exit app

@@ -2,7 +2,7 @@
 ; unless dist\PerfMon\ already exists.
 
 #define AppName "PerfMon"
-#define AppVersion "1.0.0"
+#define AppVersion "1.1.0"
 #define AppExe "PerfMon.exe"
 
 [Setup]
