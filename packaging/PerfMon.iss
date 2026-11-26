@@ -2,7 +2,7 @@
 ; this directly (it prepares dist\PerfMon\ and vendor\ first).
 
 #define AppName "PerfMon"
-#define AppVersion "1.2.0"
+#define AppVersion "1.2.1"
 #define AppExe "PerfMon.exe"
 
 [Setup]
@@ -53,7 +53,6 @@ Name: "{userstartup}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: startup
 
 [Run]
 Filename: "{tmp}\PawnIO_setup.exe"; Parameters: "-install -silent"; StatusMsg: "Installing the PawnIO sensor driver..."; Tasks: sensors; Check: not PawnIOInstalled; Flags: waituntilterminated
-Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\tools\sensors.ps1"" -Action install -AppDir ""{app}"""; StatusMsg: "Setting up temperature monitoring..."; Tasks: sensors; Flags: runhidden waituntilterminated
 Filename: "{app}\{#AppExe}"; Description: "Launch {#AppName} now"; Flags: nowait postinstall skipifsilent runasoriginaluser
 
 [UninstallRun]
@@ -67,6 +66,21 @@ Type: filesandordirs; Name: "{localappdata}\{#AppName}"
 function PawnIOInstalled: Boolean;
 begin
   Result := RegKeyExists(HKLM64, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\PawnIO');
+end;
+
+{ Registers the sign-in task and starts the sensors; warns (instead of failing silently) on error. }
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  Code: Integer;
+begin
+  if (CurStep = ssPostInstall) and WizardIsTaskSelected('sensors') then
+  begin
+    WizardForm.StatusLabel.Caption := 'Setting up temperature monitoring...';
+    if (not Exec('powershell.exe', '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\tools\sensors.ps1') +
+        '" -Action install -AppDir "' + ExpandConstant('{app}') + '"', '', SW_HIDE, ewWaitUntilTerminated, Code)) or (Code <> 0) then
+      SuppressibleMsgBox('PerfMon was installed, but temperature monitoring could not be set up (code ' + IntToStr(Code) + ').' + #13#10#13#10 +
+        'PerfMon will still work; you can start the sensors from its Thermals page instead.', mbError, MB_OK, IDOK);
+  end;
 end;
 
 { Stop a running bundled LibreHardwareMonitor so its files can be replaced on upgrade. }

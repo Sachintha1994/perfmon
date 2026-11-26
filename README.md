@@ -165,6 +165,8 @@ perfmon/
 
 ## Changelog
 
+**1.2.1** — Fix: 1.2.0 didn't create the sign-in task for the temperature sensors (a script error that setup didn't report). Setup now warns if this step fails, and stops any separately running LibreHardwareMonitor so the bundled copy can serve sensor data on port 8085.
+
 **1.2.0** — The installer now includes everything needed for temperatures: LibreHardwareMonitor, the PawnIO sensor driver and a sign-in task, so temperatures work right after install. Installs to Program Files (admin once). Third-party licenses are installed alongside the app.
 
 **1.1.0** — Temperature monitoring: CPU package / per-core, SSD and GPU temperatures, a new Thermals page, temperature in the health badge. Window opens maximized; 5-minute chart history.

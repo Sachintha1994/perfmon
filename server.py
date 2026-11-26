@@ -25,7 +25,7 @@ from pathlib import Path
 import psutil
 
 APP_NAME = "PerfMon"
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.2.1"
 HOST, PORT = "127.0.0.1", 8765
 INTERVAL = 1.0          # seconds between samples
 HISTORY = 300           # samples kept for the graphs (5 minutes)
