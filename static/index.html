@@ -646,10 +646,12 @@ function buildTempCharts(t) {
 }
 function setupCard(st) {
   const btn = st?.running ? "" : st?.installed
-    ? `<button class="cta" onclick="startLhm(this)">Start LibreHardwareMonitor</button>`
+    ? `<button class="cta" onclick="startLhm(this)">${st.task ? "Start temperature sensors" : "Start LibreHardwareMonitor"}</button>`
     : `<a class="cta" href="https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases" target="_blank">Get LibreHardwareMonitor</a>`;
   const steps = st?.running
     ? `<ol><li>Open LibreHardwareMonitor from the system tray.</li><li>Turn on <b>Options → Remote Web Server → Run</b> (port <code>8085</code>).</li><li>PerfMon picks it up within a few seconds.</li></ol>`
+    : st?.task
+    ? `<ol><li>Click <b>Start temperature sensors</b>. LibreHardwareMonitor, installed with PerfMon, starts in the background.</li><li>It also starts automatically every time you sign in.</li></ol>`
     : st?.installed
     ? `<ol><li>Click <b>Start</b> and approve the Windows prompt (it needs admin rights to read sensors).</li><li>If temperatures still don't appear, turn on <b>Options → Remote Web Server → Run</b> in it.</li></ol>`
     : `<ol><li>Install it, or run <code>winget install LibreHardwareMonitor.LibreHardwareMonitor</code>.</li><li>Start it, then turn on <b>Options → Remote Web Server → Run</b> (port <code>8085</code>).</li></ol>`;
@@ -658,9 +660,10 @@ function setupCard(st) {
     <p>Windows doesn't let apps read CPU temperature directly. PerfMon reads it from the free, open-source <b>LibreHardwareMonitor</b>, which runs in the background.</p>${steps}</div>${btn}</div>`;
 }
 async function startLhm(b) {
-  b.disabled = true; b.textContent = "Approve the Windows prompt…";
-  try { await fetch("/api/temps/start-lhm", { method: "POST" }); } catch {}
-  setTimeout(() => { b.disabled = false; b.textContent = "Start LibreHardwareMonitor"; }, 8000);
+  const label = b.textContent; b.disabled = true; b.textContent = "Starting…";
+  try { const r = await (await fetch("/api/temps/start-lhm", { method: "POST" })).json();
+        if (r.via === "direct") b.textContent = "Approve the Windows prompt…"; } catch {}
+  setTimeout(() => { b.disabled = false; b.textContent = label; }, 8000);
 }
 async function refreshSetup() {
   lastSetupCheck = Date.now();

@@ -1,0 +1,31 @@
+PerfMon - third-party components
+================================
+
+The PerfMon installer includes the following unmodified third-party software.
+Each remains under its own license; their full license texts are in the
+"licenses" folder next to this file.
+
+
+LibreHardwareMonitor 0.9.6
+--------------------------
+Reads hardware sensors (CPU, SSD, GPU temperatures) for PerfMon.
+License:  Mozilla Public License 2.0 (licenses\LibreHardwareMonitor-MPL-2.0.txt)
+Source:   https://github.com/LibreHardwareMonitor/LibreHardwareMonitor
+Binary:   https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases/tag/v0.9.6
+Installed to: <PerfMon folder>\LibreHardwareMonitor\
+
+
+PawnIO 2.2.0
+------------
+Signed kernel driver that LibreHardwareMonitor uses to read CPU sensors.
+Copyright (C) namazso.
+License:  GNU General Public License v2 or later, with a linking exception
+          (licenses\PawnIO-GPL-2.0.txt)
+Source:   https://github.com/namazso/PawnIO
+Binary:   https://github.com/namazso/PawnIO.Setup/releases/tag/2.2.0
+Installed system-wide; it has its own entry in Settings > Apps and is NOT
+removed when PerfMon is uninstalled, because other tools may use it.
+
+
+PerfMon also bundles the Python runtime and libraries listed in the
+project README (psutil, pywebview, pythonnet), under their own licenses.

@@ -25,7 +25,7 @@ from pathlib import Path
 import psutil
 
 APP_NAME = "PerfMon"
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.2.0"
 HOST, PORT = "127.0.0.1", 8765
 INTERVAL = 1.0          # seconds between samples
 HISTORY = 300           # samples kept for the graphs (5 minutes)
@@ -58,8 +58,15 @@ def _parse_temp(v):
     return round((num - 32) * 5 / 9, 1) if v.rstrip().endswith("F") else num
 
 
+# Installed layout: <app>\PerfMon.exe + <app>\LibreHardwareMonitor\ ; from source: vendor\
+APP_DIR = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).parent / "vendor"
+BUNDLED_LHM = APP_DIR / "LibreHardwareMonitor" / "LibreHardwareMonitor.exe"
+SENSOR_TASK = r"\PerfMon\Sensors"  # created by the installer; runs LHM elevated without a UAC prompt
+_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
 def find_lhm_exe():
-    cands = [shutil.which("LibreHardwareMonitor")]
+    cands = [str(BUNDLED_LHM), shutil.which("LibreHardwareMonitor")]
     la = Path(os.environ.get("LOCALAPPDATA", ""))
     cands += [str(p) for p in (la / "Microsoft" / "WinGet" / "Packages").glob(
         "LibreHardwareMonitor*/LibreHardwareMonitor.exe")]
@@ -67,6 +74,42 @@ def find_lhm_exe():
         if base:
             cands.append(str(Path(base) / "LibreHardwareMonitor" / "LibreHardwareMonitor.exe"))
     return next((c for c in cands if c and Path(c).is_file()), None)
+
+
+def lhm_running():
+    return any((p.info["name"] or "").lower() == "librehardwaremonitor.exe"
+               for p in psutil.process_iter(["name"]))
+
+
+def sensor_task_exists():
+    try:
+        return subprocess.run(["schtasks", "/Query", "/TN", SENSOR_TASK], capture_output=True,
+                              creationflags=_NO_WINDOW, timeout=5).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def start_lhm(allow_uac=True):
+    """Start LibreHardwareMonitor: via the installer's scheduled task (no prompt) if present,
+    otherwise directly (its manifest triggers a UAC prompt). Returns how it was started."""
+    try:
+        if subprocess.run(["schtasks", "/Run", "/TN", SENSOR_TASK], capture_output=True,
+                          creationflags=_NO_WINDOW, timeout=10).returncode == 0:
+            return "task"
+    except (OSError, subprocess.SubprocessError):
+        pass
+    exe = find_lhm_exe()
+    if exe and allow_uac:
+        os.startfile(exe)
+        return "direct"
+    return None
+
+
+def autostart_sensors():
+    """On launch: if temperatures aren't available yet, quietly start the bundled sensor task."""
+    time.sleep(2.5)
+    if sampler and not sampler.thermals.ok and not lhm_running():
+        start_lhm(allow_uac=False)
 
 
 class Thermals:
@@ -459,9 +502,8 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path == "/api/benchmark":
             self._json(Bench.state)
         elif self.path == "/api/temps/status":
-            running = any((p.info["name"] or "").lower() == "librehardwaremonitor.exe"
-                          for p in psutil.process_iter(["name"]))
-            self._json({"installed": bool(find_lhm_exe()), "running": running,
+            self._json({"installed": bool(find_lhm_exe()), "bundled": BUNDLED_LHM.is_file(),
+                        "task": sensor_task_exists(), "running": lhm_running(),
                         "connected": sampler.thermals.ok, "url": LHM_URL})
         elif self.path == "/api/benchmark/history":
             self._json(load_bench_history())
@@ -486,14 +528,13 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         if self.path == "/api/temps/start-lhm":
-            exe = find_lhm_exe()
-            if not exe:
-                return self._json({"started": False, "reason": "not_installed"}, 404)
-            try:  # LHM's manifest asks for admin, so Windows shows a UAC prompt
-                os.startfile(exe)
-                return self._json({"started": True})
+            try:
+                how = start_lhm()
             except OSError as e:
                 return self._json({"started": False, "reason": str(e)}, 500)
+            if not how:
+                return self._json({"started": False, "reason": "not_installed"}, 404)
+            return self._json({"started": True, "via": how})
         if self.path == "/api/benchmark":
             started = Bench.start()
             self._json({"started": started}, 202 if started else 409)
@@ -521,6 +562,7 @@ def main():
     if "--page" in sys.argv[:-1]:  # e.g. --page thermals
         url += "/#" + sys.argv[sys.argv.index("--page") + 1]
     threading.Thread(target=srv.serve_forever, daemon=True).start()
+    threading.Thread(target=autostart_sensors, daemon=True).start()
 
     use_browser = "--browser" in sys.argv or os.environ.get("PERFMON_BROWSER") == "1"
     if os.environ.get("PERFMON_NO_BROWSER") == "1":

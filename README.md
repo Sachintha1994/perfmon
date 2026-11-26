@@ -29,8 +29,9 @@
 
 Download `PerfMon-Setup-x.y.z.exe` from the [Releases](../../releases) page (or build it yourself — see below) and run it.
 
-- No administrator rights needed (installs per-user by default).
-- Optional desktop shortcut and "start when I sign in" option.
+- **Everything is included** — the installer also sets up temperature monitoring (LibreHardwareMonitor + the PawnIO sensor driver), so temperatures work straight away with no extra downloads.
+- Asks for administrator rights once (to install the sensor driver and a sign-in task); PerfMon itself runs as a normal app.
+- Optional desktop shortcut and "start when I sign in" option. Temperature monitoring can be unticked during setup.
 - Uninstall from **Settings → Apps** like any other program.
 
 Requires Windows 10/11 (64-bit) with the Microsoft Edge WebView2 runtime, which is preinstalled on Windows 11.
@@ -41,16 +42,19 @@ Requires Windows 10/11 (64-bit) with the Microsoft Edge WebView2 runtime, which 
   <img src="docs/thermals.png" alt="PerfMon Thermals page: CPU, SSD and hottest-core gauges, 5-minute temperature history, per-core temperatures and all sensors" width="900">
 </p>
 
-Windows doesn't provide a standard way for normal (non-admin) apps to read CPU temperature — reading it needs a low-level hardware driver. Rather than ship a driver and force PerfMon to run as administrator, PerfMon reads temperatures from the free, open-source [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor), which runs in the background.
+Windows doesn't provide a standard way for normal (non-admin) apps to read CPU temperature — reading it needs a low-level hardware driver. PerfMon therefore reads temperatures from the free, open-source [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) running in the background, while PerfMon itself stays an ordinary non-admin app.
 
-One-time setup:
+**With the installer, there's nothing to set up.** It bundles and configures:
 
-1. Install LibreHardwareMonitor: `winget install LibreHardwareMonitor.LibreHardwareMonitor` (or download it from its releases page).
-2. Start it and approve the admin prompt (it needs admin rights to read sensors).
-3. In LibreHardwareMonitor, turn on **Options → Remote Web Server → Run** (default port `8085`).
-   Optionally also enable **Options → Start Minimized**, **Minimize To Tray**, **Minimize On Close** and **Run On Windows Startup** so it stays out of the way.
+| Component | What it's for | Where it goes |
+|---|---|---|
+| LibreHardwareMonitor 0.9.6 (MPL-2.0) | Reads CPU, SSD and GPU sensors | `PerfMon\LibreHardwareMonitor\`, preset to serve data on `127.0.0.1:8085` only and stay in the tray |
+| PawnIO 2.2.0 (GPL-2.0) | Signed kernel driver LibreHardwareMonitor uses for CPU sensors | System-wide (skipped if already installed) |
+| Scheduled task `\PerfMon\Sensors` | Starts LibreHardwareMonitor elevated at sign-in, without a UAC prompt each time — also on battery | Task Scheduler |
 
-PerfMon picks up temperatures within a few seconds — until then the dashboard shows a setup card with a **Start LibreHardwareMonitor** button. If LibreHardwareMonitor uses a different port, set `PERFMON_LHM_URL`, e.g. `http://127.0.0.1:8086/data.json`.
+PerfMon also starts the task itself if temperatures aren't available when it opens. Uninstalling PerfMon removes LibreHardwareMonitor and the task; PawnIO is left in place (other tools may use it) and can be removed from **Settings → Apps**. Licenses and source links are in `THIRD-PARTY-NOTICES.txt` in the install folder.
+
+**Running from source / using your own LibreHardwareMonitor:** run LibreHardwareMonitor and turn on **Options → Remote Web Server → Run** (port `8085`). Until temperatures are available the dashboard shows a setup card with a start button. If LibreHardwareMonitor uses a different port, set `PERFMON_LHM_URL`, e.g. `http://127.0.0.1:8086/data.json`.
 
 On machines with an NVIDIA GPU, the GPU temperature is shown even without LibreHardwareMonitor.
 
@@ -89,11 +93,12 @@ build.bat
 This will:
 
 1. install the build dependencies (PyInstaller, Pillow),
-2. draw the app icon (`packaging/make_icon.py`),
-3. bundle `dist/PerfMon/PerfMon.exe` with PyInstaller,
-4. compile `installer/PerfMon-Setup-<version>.exe` with [Inno Setup 6](https://jrsoftware.org/isinfo.php) (`winget install JRSoftware.InnoSetup`).
+2. download LibreHardwareMonitor and PawnIO into `vendor/` and verify them against pinned SHA-256 hashes (`packaging/fetch_vendor.py`),
+3. draw the app icon (`packaging/make_icon.py`),
+4. bundle `dist/PerfMon/PerfMon.exe` with PyInstaller,
+5. compile `installer/PerfMon-Setup-<version>.exe` with [Inno Setup 6](https://jrsoftware.org/isinfo.php) (`winget install JRSoftware.InnoSetup`).
 
-If Inno Setup isn't installed, step 4 is skipped and the portable app in `dist/PerfMon/` still works.
+If Inno Setup isn't installed, step 5 is skipped and the portable app in `dist/PerfMon/` still works.
 
 ## How it works
 
@@ -137,6 +142,11 @@ perfmon/
 ├── build.bat              # build exe + installer
 ├── packaging/
 │   ├── make_icon.py       # generates icon.ico / icon.png
+│   ├── fetch_vendor.py    # downloads + verifies LibreHardwareMonitor and PawnIO
+│   ├── sensors.ps1        # creates/removes the sign-in task for the sensors
+│   ├── LibreHardwareMonitor.config   # preset: local web server, tray
+│   ├── THIRD-PARTY-NOTICES.txt
+│   ├── licenses/          # MPL-2.0 (LibreHardwareMonitor), GPL-2.0 (PawnIO)
 │   └── PerfMon.iss        # Inno Setup installer script
 └── docs/screenshot.png
 ```
