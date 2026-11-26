@@ -37,6 +37,10 @@ Requires Windows 10/11 (64-bit) with the Microsoft Edge WebView2 runtime, which 
 
 ## Temperature monitoring
 
+<p align="center">
+  <img src="docs/thermals.png" alt="PerfMon Thermals page: CPU, SSD and hottest-core gauges, 5-minute temperature history, per-core temperatures and all sensors" width="900">
+</p>
+
 Windows doesn't provide a standard way for normal (non-admin) apps to read CPU temperature — reading it needs a low-level hardware driver. Rather than ship a driver and force PerfMon to run as administrator, PerfMon reads temperatures from the free, open-source [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor), which runs in the background.
 
 One-time setup:
