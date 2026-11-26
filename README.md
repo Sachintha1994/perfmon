@@ -10,8 +10,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Sachintha1994/perfmon/releases/latest"><b>⬇ Download the latest installer</b></a>
-  &nbsp;·&nbsp; Windows 10/11 64-bit
+  <a href="https://github.com/Sachintha1994/perfmon/releases/latest/download/PerfMon-Setup.exe"><img alt="Download PerfMon for Windows" src="https://img.shields.io/badge/Download-PerfMon--Setup.exe-2a6ff0?style=for-the-badge&logo=windows&logoColor=white"></a>
+  <br>
+  <sub>Windows 10/11 · 64-bit · ~23 MB · <a href="https://github.com/Sachintha1994/perfmon/releases/latest">release notes &amp; checksums</a></sub>
 </p>
 
 <p align="center">
@@ -30,9 +31,16 @@
 - **GPU** — utilisation, temperature and VRAM are shown automatically on machines with an NVIDIA GPU (`nvidia-smi`).
 - **Dark and light themes**, native desktop window, no internet connection required.
 
-## Install
+## Download & install
 
-Download `PerfMon-Setup-x.y.z.exe` from the [latest release](https://github.com/Sachintha1994/perfmon/releases/latest) (or build it yourself — see below) and run it.
+### ⬇ [Download PerfMon-Setup.exe](https://github.com/Sachintha1994/perfmon/releases/latest/download/PerfMon-Setup.exe)
+
+This link always gets the newest version. Older versions and SHA-256 checksums are on the [Releases page](https://github.com/Sachintha1994/perfmon/releases).
+
+1. **Download** [`PerfMon-Setup.exe`](https://github.com/Sachintha1994/perfmon/releases/latest/download/PerfMon-Setup.exe).
+2. **Run it.** If Windows shows *"Windows protected your PC"*, click **More info → Run anyway** (the installer isn't code-signed yet).
+3. **Click "Yes"** on the administrator prompt. Setup needs it once, to install the temperature sensor driver.
+4. **Click through the wizard** and keep *"Enable temperature monitoring"* ticked, then **Finish**. PerfMon opens straight away.
 
 - **Everything is included** — the installer also sets up temperature monitoring (LibreHardwareMonitor + the PawnIO sensor driver), so temperatures work straight away with no extra downloads.
 - Asks for administrator rights once (to install the sensor driver and a sign-in task); PerfMon itself runs as a normal app.
