@@ -208,6 +208,26 @@ td.n, th.n { text-align: right; }
 .chip { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 99px; background: var(--panel-hi); }
 .chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--c); }
 
+/* updates */
+.upd-pill { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 10px; cursor: pointer;
+  font-size: 12.5px; font-weight: 600; color: #fff; background: linear-gradient(135deg, var(--acc-a), var(--acc-b));
+  box-shadow: 0 6px 18px rgba(77,141,255,.3); border: 0; text-align: left; }
+.upd { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+.upd .ic { width: 52px; height: 52px; border-radius: 15px; display: grid; place-items: center; flex: none;
+  background: linear-gradient(135deg, var(--acc-a), var(--acc-b)); box-shadow: 0 8px 24px rgba(77,141,255,.3); }
+.upd .txt { flex: 1; min-width: 260px; }
+.upd .txt b { font-size: 15px; } .upd .txt p { margin: 3px 0 0; color: var(--ink-2); }
+.upd .acts { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.upd .meter { margin-top: 10px; max-width: 420px; }
+
+/* footer: shared by every page, pinned to the bottom when a page is short */
+main { display: flex; flex-direction: column; }
+.page { width: 100%; }
+.app-footer { margin: auto auto 0; padding: 28px 0 0; width: 100%; max-width: 1500px; text-align: center;
+  font-size: 12.5px; color: var(--ink-3); }
+.app-footer::before { content: ""; display: block; height: 1px; background: var(--line); margin-bottom: 16px; }
+.app-footer b { color: var(--ink-2); font-weight: 600; }
+
 /* system */
 .kv { display: grid; grid-template-columns: 160px 1fr; gap: 10px 16px; }
 .kv dt { color: var(--ink-2); } .kv dd { margin: 0; font-weight: 500; overflow-wrap: anywhere; }
@@ -238,6 +258,7 @@ td.n, th.n { text-align: right; }
     <a data-page="system"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>System</a>
   </nav>
   <div class="side-foot">
+    <button class="upd-pill" id="updPill" hidden data-goto="system"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg><span id="updPillText">Update available</span></button>
     <div class="pill"><i class="pulse off" id="liveDot"></i><span id="liveText">Connecting…</span></div>
     <div class="btn-row">
       <button id="pauseBtn" title="Pause live updates"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg><span>Pause</span></button>
@@ -397,10 +418,24 @@ td.n, th.n { text-align: right; }
   <section class="page" id="p-system">
     <div class="page-head"><div><h1>System</h1><p>Hardware and software details</p></div></div>
     <div class="grid">
+      <div class="card c12" id="updCard">
+        <div class="upd">
+          <div class="ic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg></div>
+          <div class="txt"><b id="updTitle">Updates</b><p id="updText">Checking for updates…</p>
+            <div class="meter" id="updMeter" hidden><i id="updBar" style="width:0%;background:linear-gradient(90deg,var(--acc-a),var(--acc-b))"></i></div></div>
+          <div class="acts">
+            <a class="muted" id="updNotes" target="_blank" hidden>What's new</a>
+            <button id="updCheck">Check for updates</button>
+            <button class="cta" id="updInstall" hidden>Download &amp; install</button>
+          </div>
+        </div>
+      </div>
       <div class="card c6"><div class="card-h"><h3>This machine</h3></div><dl class="kv" id="sysinfo"></dl></div>
       <div class="card c6"><div class="card-h"><h3>Right now</h3></div><dl class="kv" id="sysnow"></dl></div>
     </div>
   </section>
+
+  <footer class="app-footer">Developed By <b>Thilina Weerasinghe</b></footer>
 </main>
 
 <script>
@@ -558,6 +593,7 @@ function go(page) {
   requestAnimationFrame(redrawAll);
 }
 document.querySelectorAll("#nav a, [data-goto]").forEach(a => a.onclick = () => go(a.dataset.page || a.dataset.goto));
+addEventListener("hashchange", () => go(location.hash.slice(1)));
 
 // ================= render =================
 const AV_COLORS = ["#4d8dff", "#ff8a3d", "#2fd4a7", "#e0a100", "#e2558b", "#25a244", "#8b6cf0", "#ec4f50"];
@@ -828,6 +864,53 @@ async function pollBench() {
   else if (st.error) $("benchWhen").textContent = "Error: " + st.error;
 }
 $("benchBtn").onclick = async () => { await fetch("/api/benchmark", { method: "POST" }); pollBench(); };
+
+// ================= updates =================
+function showUpdate(info) {
+  if (!info) return;
+  const pill = $("updPill"), btn = $("updInstall"), notes = $("updNotes");
+  if (!info.ok) { $("updTitle").textContent = `PerfMon ${info.current}`; $("updText").textContent = info.error + ". You can try again later."; btn.hidden = true; return; }
+  notes.hidden = !info.notes_url; notes.href = info.notes_url || "#";
+  if (info.available) {
+    pill.hidden = false; $("updPillText").textContent = `Update to v${info.latest}`;
+    $("updTitle").textContent = `PerfMon ${info.latest} is available`;
+    const size = info.asset?.size ? ` · ${fmtBytes(info.asset.size)}` : "";
+    $("updText").textContent = info.can_install
+      ? `You have ${info.current}. The installer is downloaded from GitHub, checked against its SHA-256${size}, then PerfMon restarts on the new version (approve the Windows prompt).`
+      : `You have ${info.current}. Download the new installer from the release page.`;
+    btn.hidden = false; btn.textContent = info.can_install ? `Download & install v${info.latest}` : "Open download page";
+  } else {
+    pill.hidden = true; btn.hidden = true;
+    $("updTitle").textContent = "You're up to date";
+    $("updText").textContent = `PerfMon ${info.current} is the latest version.`;
+  }
+}
+async function checkUpdates(force) {
+  $("updCheck").disabled = true; if (force) $("updText").textContent = "Checking for updates…";
+  try { showUpdate(await (await fetch(`/api/update/check${force ? "?force=1" : ""}`)).json()); } catch {}
+  $("updCheck").disabled = false;
+}
+async function pollInstall() {
+  const st = await (await fetch("/api/update/status")).json();
+  const m = $("updMeter"), bar = $("updBar"), t = $("updText");
+  if (st.phase === "downloading") { m.hidden = false; bar.style.width = (st.total ? st.done / st.total * 100 : 5) + "%";
+    t.textContent = `Downloading… ${fmtBytes(st.done)}${st.total ? " of " + fmtBytes(st.total) : ""}`; }
+  else if (st.phase === "verifying") t.textContent = "Verifying the download (SHA-256)…";
+  else if (st.phase === "launching" || st.phase === "closing") { bar.style.width = "100%";
+    t.textContent = "Starting the installer. Approve the Windows prompt; PerfMon will close and reopen on the new version."; return; }
+  else if (st.phase === "error") { m.hidden = true; t.textContent = "Update failed: " + st.error; $("updInstall").disabled = false; return; }
+  setTimeout(pollInstall, 400);
+}
+$("updCheck").onclick = () => checkUpdates(true);
+$("updInstall").onclick = async () => {
+  const info = await (await fetch("/api/update/check")).json();
+  if (!info.can_install) { if (info.notes_url) window.open(info.notes_url, "_blank"); return; }
+  $("updInstall").disabled = true;
+  await fetch("/api/update/install", { method: "POST" }); pollInstall();
+};
+// first check a few seconds after launch (the server also re-checks every 6 h)
+setTimeout(() => checkUpdates(false), 10000);
+setInterval(() => checkUpdates(false), 3600 * 1000);
 
 // ================= boot =================
 (async () => {

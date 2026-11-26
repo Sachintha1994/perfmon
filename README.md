@@ -29,7 +29,8 @@
 - **Storage** — used / free space for every drive.
 - **Benchmark** — a ~20 second test of single-core CPU, multi-core CPU, memory bandwidth and disk read/write speed, producing an overall score. Results are saved so you can track scores over time.
 - **GPU** — utilisation, temperature and VRAM are shown automatically on machines with an NVIDIA GPU (`nvidia-smi`).
-- **Dark and light themes**, native desktop window, no internet connection required.
+- **Built-in updates** — PerfMon tells you when a new version is out and can download, verify and install it for you ([details](#updating)).
+- **Dark and light themes**, native desktop window. Works offline (only the optional update check uses the internet).
 
 ## Download & install
 
@@ -52,6 +53,17 @@ Requires Windows 10 (1809 or later) or Windows 11, 64-bit, with the Microsoft Ed
 > **Windows SmartScreen:** the installer isn't code-signed yet, so Windows may show "Windows protected your PC". Click **More info → Run anyway**. Each release lists the installer's SHA-256 so you can verify the download.
 
 > **Upgrading from 1.0 or 1.1:** those versions installed per-user (in `%LOCALAPPDATA%\Programs\PerfMon`), while 1.2+ installs to Program Files. Uninstall the old version from **Settings → Apps** first so you don't end up with two copies. If you had installed LibreHardwareMonitor separately, exit it (tray icon → **Exit**) before installing, as it would occupy the port the bundled copy uses; you can then uninstall it.
+
+## Updating
+
+PerfMon checks GitHub for a newer release shortly after it starts and every few hours. When one is available:
+
+- an **Update to vX.Y.Z** button appears at the bottom of the sidebar, and
+- the **System** page shows an **Updates** card with **Download & install**, a link to what's new, and **Check for updates** to check right away.
+
+**Download & install** downloads `PerfMon-Setup.exe` from the latest GitHub release and checks it against the SHA-256 that GitHub publishes for the file. If it doesn't match, the file is deleted and nothing is installed. Then it starts the installer, which asks for administrator permission once. PerfMon closes, is upgraded in place with your previous setup choices, and reopens on the new version.
+
+The update check is a single anonymous request to the public GitHub API (`api.github.com/repos/Sachintha1994/perfmon/releases/latest`). No data about your computer is sent. If you're offline, the check just fails quietly. You can always update manually by running the newest installer from the [download link](https://github.com/Sachintha1994/perfmon/releases/latest/download/PerfMon-Setup.exe).
 
 ## Temperature monitoring
 
@@ -130,6 +142,9 @@ If Inno Setup isn't installed, step 5 is skipped and the portable app in `dist/P
 │   GET  /stream                 Server-Sent Events, 1 msg/second   │
 │   GET  /api/info               static system details              │
 │   GET  /api/history            last 5 minutes of samples          │
+│   GET  /api/update/check       newest GitHub release vs. this one │
+│   POST /api/update/install     download, verify, run installer    │
+│   GET  /api/update/status      download progress                  │
 │   GET  /api/temps/status       is LibreHardwareMonitor available  │
 │   POST /api/temps/start-lhm    launch LibreHardwareMonitor        │
 │   POST /api/benchmark          start a benchmark run              │
@@ -172,6 +187,8 @@ perfmon/
 `vendor/` (LibreHardwareMonitor and PawnIO downloaded by `build.bat`), `dist/`, `build/` and `installer/` are build output and not committed.
 
 ## Changelog
+
+**1.2.2** — In-app updates: PerfMon checks for new releases, and **Download & install** (System page, or the sidebar button) downloads the installer, verifies its SHA-256 and upgrades in place. Footer on every page: "Developed By Thilina Weerasinghe". Pages can be opened by URL hash (`#thermals`, …) at any time.
 
 **1.2.1** — Fix: 1.2.0 didn't create the sign-in task for the temperature sensors (a script error that setup didn't report). Setup now warns if this step fails, and stops any separately running LibreHardwareMonitor so the bundled copy can serve sensor data on port 8085.
 

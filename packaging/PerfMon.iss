@@ -2,7 +2,7 @@
 ; this directly (it prepares dist\PerfMon\ and vendor\ first).
 
 #define AppName "PerfMon"
-#define AppVersion "1.2.1"
+#define AppVersion "1.2.2"
 #define AppExe "PerfMon.exe"
 
 [Setup]
@@ -54,6 +54,8 @@ Name: "{userstartup}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: startup
 [Run]
 Filename: "{tmp}\PawnIO_setup.exe"; Parameters: "-install -silent"; StatusMsg: "Installing the PawnIO sensor driver..."; Tasks: sensors; Check: not PawnIOInstalled; Flags: waituntilterminated
 Filename: "{app}\{#AppExe}"; Description: "Launch {#AppName} now"; Flags: nowait postinstall skipifsilent runasoriginaluser
+; in-app updates run setup with /SILENT: reopen PerfMon when it's done
+Filename: "{app}\{#AppExe}"; Flags: nowait runasoriginaluser; Check: WizardSilent
 
 [UninstallRun]
 Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\tools\sensors.ps1"" -Action uninstall -AppDir ""{app}"""; RunOnceId: "RemoveSensorsTask"; Flags: runhidden waituntilterminated

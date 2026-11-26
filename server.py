@@ -25,7 +25,7 @@ from pathlib import Path
 import psutil
 
 APP_NAME = "PerfMon"
-APP_VERSION = "1.2.1"
+APP_VERSION = "1.2.2"
 HOST, PORT = "127.0.0.1", 8765
 INTERVAL = 1.0          # seconds between samples
 HISTORY = 300           # samples kept for the graphs (5 minutes)
@@ -425,6 +425,118 @@ def run_benchmark(progress):
     return res
 
 
+# --------------------------------------------------------------------------- #
+# Updates (GitHub releases)
+# --------------------------------------------------------------------------- #
+RELEASES_API = "https://api.github.com/repos/Sachintha1994/perfmon/releases/latest"
+UPDATE_ASSET = "PerfMon-Setup.exe"
+FROZEN = getattr(sys, "frozen", False)
+
+
+def _ver(v):
+    try:
+        return tuple(int(x) for x in str(v).lstrip("vV").split("-")[0].split("."))
+    except ValueError:
+        return (0,)
+
+
+class Updater:
+    """Checks the latest GitHub release; downloads, verifies (SHA-256) and launches its installer."""
+    lock = threading.Lock()
+    info = None          # last check result
+    checked_at = 0.0
+    state = {"phase": "idle", "done": 0, "total": 0, "error": None}
+
+    @classmethod
+    def check(cls, force=False):
+        if not force and cls.info and time.time() - cls.checked_at < 3600:
+            return cls.info
+        req = urllib.request.Request(RELEASES_API, headers={
+            "Accept": "application/vnd.github+json", "User-Agent": f"{APP_NAME}/{APP_VERSION}"})
+        try:
+            with urllib.request.urlopen(req, timeout=8) as r:
+                rel = json.loads(r.read().decode("utf-8"))
+        except Exception as e:
+            return {"current": APP_VERSION, "ok": False, "error": f"Couldn't reach GitHub ({e.__class__.__name__})"}
+        assets = [a for a in rel.get("assets", []) if a.get("name", "").lower().endswith(".exe")]
+        asset = next((a for a in assets if a["name"] == UPDATE_ASSET), assets[0] if assets else None)
+        latest = rel.get("tag_name", "").lstrip("vV")
+        digest = (asset or {}).get("digest") or ""
+        cls.info = {
+            "ok": True, "current": APP_VERSION, "latest": latest,
+            "available": bool(asset) and _ver(latest) > _ver(APP_VERSION),
+            "can_install": FROZEN and bool(asset) and digest.startswith("sha256:"),
+            "title": rel.get("name") or rel.get("tag_name"), "notes_url": rel.get("html_url"),
+            "published_at": rel.get("published_at"),
+            "asset": asset and {"name": asset["name"], "size": asset.get("size"),
+                                "url": asset.get("browser_download_url"),
+                                "sha256": digest.split(":", 1)[1] if digest.startswith("sha256:") else None},
+        }
+        cls.checked_at = time.time()
+        return cls.info
+
+    @classmethod
+    def install(cls):
+        with cls.lock:
+            if cls.state["phase"] in ("downloading", "verifying", "launching"):
+                return False
+            cls.state = {"phase": "downloading", "done": 0, "total": 0, "error": None}
+        threading.Thread(target=cls._run, daemon=True).start()
+        return True
+
+    @classmethod
+    def _run(cls):
+        st = cls.state
+        try:
+            info = cls.check(force=True)
+            if not info.get("ok"):
+                raise RuntimeError(info.get("error"))
+            if not info["available"]:
+                raise RuntimeError("You already have the latest version.")
+            if not info["can_install"]:
+                raise RuntimeError("This copy can't update itself (running from source, or the "
+                                   "release has no verifiable installer).")
+            a = info["asset"]
+            folder = Path(tempfile.gettempdir()) / "PerfMon-update"
+            folder.mkdir(exist_ok=True)
+            dest = folder / f"PerfMon-Setup-{info['latest']}.exe"
+            h = hashlib.sha256()
+            req = urllib.request.Request(a["url"], headers={"User-Agent": f"{APP_NAME}/{APP_VERSION}"})
+            with urllib.request.urlopen(req, timeout=30) as r, open(dest, "wb") as f:
+                st["total"] = int(r.headers.get("Content-Length") or a.get("size") or 0)
+                while chunk := r.read(256 * 1024):
+                    f.write(chunk)
+                    h.update(chunk)
+                    st["done"] += len(chunk)
+            st["phase"] = "verifying"
+            if h.hexdigest() != a["sha256"]:
+                dest.unlink(missing_ok=True)
+                raise RuntimeError("Downloaded file failed the SHA-256 check and was deleted.")
+            st["phase"] = "launching"
+            # Inno Setup elevates itself (UAC prompt), upgrades in place and relaunches PerfMon.
+            # /SILENT keeps the user's previous choices (e.g. temperature monitoring).
+            import ctypes
+            rc = ctypes.windll.shell32.ShellExecuteW(None, "open", str(dest),
+                                                    "/SILENT /SP- /NOCANCEL /RESTARTAPPLICATIONS", None, 1)
+            if rc <= 32:
+                raise RuntimeError(f"Couldn't start the installer (code {rc}).")
+            st["phase"] = "closing"
+            threading.Timer(2.0, lambda: os._exit(0)).start()  # let the installer replace our files
+        except Exception as e:
+            st.update(phase="error", error=str(e))
+
+
+def update_checker():
+    """Background check shortly after launch, then every 6 hours."""
+    time.sleep(8)
+    while True:
+        try:
+            Updater.check(force=True)
+        except Exception:
+            pass
+        time.sleep(6 * 3600)
+
+
 def load_bench_history():
     try:
         return json.loads(BENCH_FILE.read_text(encoding="utf-8"))
@@ -501,6 +613,10 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(list(sampler.history))
         elif self.path == "/api/benchmark":
             self._json(Bench.state)
+        elif self.path.startswith("/api/update/check"):
+            self._json(Updater.check(force="force=1" in self.path))
+        elif self.path == "/api/update/status":
+            self._json({**Updater.state, "info": Updater.info})
         elif self.path == "/api/temps/status":
             self._json({"installed": bool(find_lhm_exe()), "bundled": BUNDLED_LHM.is_file(),
                         "task": sensor_task_exists(), "running": lhm_running(),
@@ -527,6 +643,9 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(404)
 
     def do_POST(self):
+        if self.path == "/api/update/install":
+            started = Updater.install()
+            return self._json({"started": started}, 202 if started else 409)
         if self.path == "/api/temps/start-lhm":
             try:
                 how = start_lhm()
@@ -563,6 +682,7 @@ def main():
         url += "/#" + sys.argv[sys.argv.index("--page") + 1]
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     threading.Thread(target=autostart_sensors, daemon=True).start()
+    threading.Thread(target=update_checker, daemon=True).start()
 
     use_browser = "--browser" in sys.argv or os.environ.get("PERFMON_BROWSER") == "1"
     if os.environ.get("PERFMON_NO_BROWSER") == "1":
