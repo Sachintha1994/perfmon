@@ -1,0 +1,18 @@
+# build output
+build/
+dist/
+installer/
+*.spec
+packaging/icon.ico
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# editors / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
